@@ -17,25 +17,10 @@
 package net.dv8tion.jda.api.entities;
 
 import net.dv8tion.jda.api.JDA;
-import net.dv8tion.jda.api.Permission;
-import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
-import net.dv8tion.jda.api.requests.Request;
-import net.dv8tion.jda.api.requests.Response;
 import net.dv8tion.jda.api.requests.RestAction;
-import net.dv8tion.jda.api.utils.MiscUtil;
-import net.dv8tion.jda.api.utils.TimeUtil;
-import net.dv8tion.jda.internal.JDAImpl;
-import net.dv8tion.jda.internal.entities.EntityBuilder;
-import net.dv8tion.jda.internal.requests.RestActionImpl;
-import net.dv8tion.jda.internal.requests.Route;
-import net.dv8tion.jda.internal.utils.Checks;
-import org.apache.commons.collections4.map.ListOrderedMap;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 import javax.annotation.CheckReturnValue;
-import java.util.*;
+import java.util.List;
 
 /**
  * Represents an access point to the {@link net.dv8tion.jda.api.entities.Message Message} history of a
@@ -43,38 +28,14 @@ import java.util.*;
  * <br><b>Note:</b> Message order is always in recent to past order. I.e: A message at index 0
  * of a list is more recent than a message at index 1.
  */
-public class MessageHistory
-{
-    protected final MessageChannel channel;
-
-    protected final ListOrderedMap<Long, Message> history = new ListOrderedMap<>();
-
-    /**
-     * Creates a new MessageHistory object.
-     *
-     * @param  channel
-     *         The {@link net.dv8tion.jda.api.entities.MessageChannel MessageChannel} to retrieval history from.
-     */
-    public MessageHistory(MessageChannel channel)
-    {
-        this.channel = channel;
-        if (channel instanceof TextChannel)
-        {
-            TextChannel tc = (TextChannel) channel;
-            if (!tc.getGuild().getSelfMember().hasPermission(tc, Permission.MESSAGE_HISTORY))
-                throw new InsufficientPermissionException(Permission.MESSAGE_HISTORY);
-        }
-    }
+public interface MessageHistory {
 
     /**
      * The corresponding JDA instance for this MessageHistory
      *
      * @return The corresponding JDA instance
      */
-    public JDA getJDA()
-    {
-        return channel.getJDA();
-    }
+    JDA getJDA();
 
     /**
      * The amount of retrieved {@link net.dv8tion.jda.api.entities.Message Messages}
@@ -84,20 +45,14 @@ public class MessageHistory
      *
      * @return Amount of retrieved messages
      */
-    public int size()
-    {
-        return history.size();
-    }
+    int size();
 
     /**
      * Whether this MessageHistory instance has retrieved any messages.
      *
      * @return True, If this MessageHistory instance has not retrieved any messages from discord.
      */
-    public boolean isEmpty()
-    {
-        return size() == 0;
-    }
+    boolean isEmpty();
 
     /**
      * Returns the {@link net.dv8tion.jda.api.entities.MessageChannel MessageChannel} that this MessageHistory
@@ -105,10 +60,7 @@ public class MessageHistory
      *
      * @return The MessageChannel of this history.
      */
-    public MessageChannel getChannel()
-    {
-        return channel;
-    }
+    MessageChannel getChannel();
 
     /**
      * Retrieves messages from Discord that were sent before the oldest sent message in MessageHistory's history cache
@@ -162,30 +114,7 @@ public class MessageHistory
      *         starting at index 0. If the list is empty, there were no more messages left to retrieve.
      */
     @CheckReturnValue
-    public RestAction<List<Message>> retrievePast(int amount)
-    {
-        if (amount > 100 || amount < 1)
-            throw new IllegalArgumentException("Message retrieval limit is between 1 and 100 messages. No more, no less. Limit provided: " + amount);
-
-        Route.CompiledRoute route = Route.Messages.GET_MESSAGE_HISTORY.compile(channel.getId()).withQueryParams("limit", Integer.toString(amount));
-
-        if (!history.isEmpty())
-            route = route.withQueryParams("before", String.valueOf(history.lastKey()));
-
-        JDAImpl jda = (JDAImpl) getJDA();
-        return new RestActionImpl<>(jda, route, (response, request) ->
-        {
-            EntityBuilder builder = jda.getEntityBuilder();
-            LinkedList<Message> msgs  = new LinkedList<>();
-            JSONArray historyJson = response.getArray();
-
-            for (int i = 0; i < historyJson.length(); i++)
-                msgs.add(builder.createMessage(historyJson.getJSONObject(i)));
-
-            msgs.forEach(msg -> history.put(msg.getIdLong(), msg));
-            return msgs;
-        });
-    }
+    RestAction<List<Message>> retrievePast(int amount);
 
     /**
      * Retrieves messages from Discord that were sent more recently than the most recently sent message in
@@ -231,34 +160,7 @@ public class MessageHistory
      *         starting at index 0. If the list is empty, there were no more messages left to retrieve.
      */
     @CheckReturnValue
-    public RestAction<List<Message>> retrieveFuture(int amount)
-    {
-        if (amount > 100 || amount < 1)
-            throw new IllegalArgumentException("Message retrieval limit is between 1 and 100 messages. No more, no less. Limit provided: " + amount);
-
-        if (history.isEmpty())
-            throw new IllegalStateException("No messages have been retrieved yet, so there is no message to act as a marker to retrieve more recent messages based on.");
-
-        Route.CompiledRoute route = Route.Messages.GET_MESSAGE_HISTORY.compile(channel.getId()).withQueryParams("limit", Integer.toString(amount), "after", String.valueOf(history.firstKey()));
-        JDAImpl jda = (JDAImpl) getJDA();
-        return new RestActionImpl<>(jda, route, (response, request) ->
-        {
-            EntityBuilder builder = jda.getEntityBuilder();
-            LinkedList<Message> msgs  = new LinkedList<>();
-            JSONArray historyJson = response.getArray();
-
-            for (int i = 0; i < historyJson.length(); i++)
-                msgs.add(builder.createMessage(historyJson.getJSONObject(i)));
-
-            for (Iterator<Message> it = msgs.descendingIterator(); it.hasNext();)
-            {
-                Message m = it.next();
-                history.put(0, m.getIdLong(), m);
-            }
-
-            return msgs;
-        });
-    }
+    RestAction<List<Message>> retrieveFuture(int amount);
 
     /**
      * Returns a List of Messages, sorted starting from newest to oldest, of all message that have already been retrieved
@@ -267,15 +169,7 @@ public class MessageHistory
      *
      * @return A List of Messages, sorted newest to oldest.
      */
-    public List<Message> getRetrievedHistory()
-    {
-        int size = size();
-        if (size == 0)
-            return Collections.emptyList();
-        else if (size == 1)
-            return Collections.singletonList(history.getValue(0));
-        return Collections.unmodifiableList(new ArrayList<>(history.values()));
-    }
+    List<Message> getRetrievedHistory();
 
     /**
      * Used to get a Message from the set of already retrieved message via it's message Id.
@@ -295,10 +189,7 @@ public class MessageHistory
      *
      * @return Possibly-null Message with the same {@code id} as the one provided.
      */
-    public Message getMessageById(String id)
-    {
-        return getMessageById(MiscUtil.parseSnowflake(id));
-    }
+    Message getMessageById(String id);
 
     /**
      * Used to get a Message from the set of already retrieved message via it's message Id.
@@ -313,166 +204,13 @@ public class MessageHistory
      *
      * @return Possibly-null Message with the same {@code id} as the one provided.
      */
-    public Message getMessageById(long id)
-    {
-        return history.get(id);
-    }
-
-    /**
-     * Constructs a {@link net.dv8tion.jda.api.entities.MessageHistory MessageHistory} with the initially retrieved history
-     * of messages sent after the mentioned message ID (exclusive).
-     * <br>The provided ID need not be valid!
-     *
-     * <p>Alternatively you can use {@link net.dv8tion.jda.api.entities.MessageChannel#getHistoryAfter(String, int) MessageChannel.getHistoryAfter(...)}
-     *
-     * <p><b>Example</b>
-     * <br>{@code MessageHistory history = MessageHistory.getHistoryAfter(channel, messageId).limit(60).complete()}
-     * <br>Will return a MessageHistory instance with the first 60 messages sent after the provided message ID.
-     *
-     * <p>Alternatively you can provide an epoch millisecond timestamp using {@link TimeUtil#getDiscordTimestamp(long) MiscUtil.getDiscordTimestamp(long)}:
-     * <br><pre><code>
-     * long timestamp = System.currentTimeMillis(); // or any other epoch millis timestamp
-     * String discordTimestamp = Long.toUnsignedString(MiscUtil.getDiscordTimestamp(timestamp));
-     * MessageHistory history = MessageHistory.getHistoryAfter(channel, discordTimestamp).complete();
-     * </code></pre>
-     *
-     * @param  channel
-     *         The {@link net.dv8tion.jda.api.entities.MessageChannel MessageChannel}
-     * @param  messageId
-     *         The pivot ID to use
-     *
-     * @throws java.lang.IllegalArgumentException
-     *         If any of the provided arguments is {@code null};
-     *         Or if the provided messageId contains whitespace
-     * @throws net.dv8tion.jda.api.exceptions.InsufficientPermissionException
-     *         If this is a TextChannel and the currently logged in account does not
-     *         have the permission {@link net.dv8tion.jda.api.Permission#MESSAGE_HISTORY Permission.MESSAGE_HISTORY}
-     *
-     * @return {@link net.dv8tion.jda.api.entities.MessageHistory.MessageRetrieveAction MessageRetrieveAction}
-     *
-     * @see    net.dv8tion.jda.api.entities.MessageChannel#getHistoryAfter(String, int)  MessageChannel.getHistoryAfter(String, int)
-     * @see    net.dv8tion.jda.api.entities.MessageChannel#getHistoryAfter(long, int)    MessageChannel.getHistoryAfter(long, int)
-     * @see    net.dv8tion.jda.api.entities.MessageChannel#getHistoryAfter(Message, int) MessageChannel.getHistoryAfter(Message, int)
-     */
-    public static MessageRetrieveAction getHistoryAfter(MessageChannel channel, String messageId)
-    {
-        checkArguments(channel, messageId);
-        Route.CompiledRoute route = Route.Messages.GET_MESSAGE_HISTORY.compile(channel.getId()).withQueryParams("after", messageId);
-        return new MessageRetrieveAction(route, channel);
-    }
-
-    /**
-     * Constructs a {@link net.dv8tion.jda.api.entities.MessageHistory MessageHistory} with the initially retrieved history
-     * of messages sent before the mentioned message ID (exclusive).
-     * <br>The provided ID need not be valid!
-     *
-     * <p>Alternatively you can use {@link net.dv8tion.jda.api.entities.MessageChannel#getHistoryBefore(String, int) MessageChannel.getHistoryBefore(...)}
-     *
-     * <p><b>Example</b>
-     * <br>{@code MessageHistory history = MessageHistory.getHistoryBefore(channel, messageId).limit(60).complete()}
-     * <br>Will return a MessageHistory instance with the first 60 messages sent before the provided message ID.
-     *
-     * <p>Alternatively you can provide an epoch millisecond timestamp using {@link TimeUtil#getDiscordTimestamp(long) MiscUtil.getDiscordTimestamp(long)}:
-     * <br><pre><code>
-     * long timestamp = System.currentTimeMillis(); // or any other epoch millis timestamp
-     * String discordTimestamp = Long.toUnsignedString(MiscUtil.getDiscordTimestamp(timestamp));
-     * MessageHistory history = MessageHistory.getHistoryBefore(channel, discordTimestamp).complete();
-     * </code></pre>
-     *
-     * @param  channel
-     *         The {@link net.dv8tion.jda.api.entities.MessageChannel MessageChannel}
-     * @param  messageId
-     *         The pivot ID to use
-     *
-     * @throws java.lang.IllegalArgumentException
-     *         If any of the provided arguments is {@code null};
-     *         Or if the provided messageId contains whitespace
-     * @throws net.dv8tion.jda.api.exceptions.InsufficientPermissionException
-     *         If this is a TextChannel and the currently logged in account does not
-     *         have the permission {@link net.dv8tion.jda.api.Permission#MESSAGE_HISTORY Permission.MESSAGE_HISTORY}
-     *
-     * @return {@link net.dv8tion.jda.api.entities.MessageHistory.MessageRetrieveAction MessageRetrieveAction}
-     *
-     * @see    net.dv8tion.jda.api.entities.MessageChannel#getHistoryBefore(String, int)  MessageChannel.getHistoryBefore(String, int)
-     * @see    net.dv8tion.jda.api.entities.MessageChannel#getHistoryBefore(long, int)    MessageChannel.getHistoryBefore(long, int)
-     * @see    net.dv8tion.jda.api.entities.MessageChannel#getHistoryBefore(Message, int) MessageChannel.getHistoryBefore(Message, int)
-     */
-    public static MessageRetrieveAction getHistoryBefore(MessageChannel channel, String messageId)
-    {
-        checkArguments(channel, messageId);
-        Route.CompiledRoute route = Route.Messages.GET_MESSAGE_HISTORY.compile(channel.getId()).withQueryParams("before", messageId);
-        return new MessageRetrieveAction(route, channel);
-    }
-
-    /**
-     * Constructs a {@link net.dv8tion.jda.api.entities.MessageHistory MessageHistory} with the initially retrieved history
-     * of messages sent around the mentioned message ID (inclusive).
-     * <br>The provided ID need not be valid!
-     *
-     * <p>Alternatively you can use {@link net.dv8tion.jda.api.entities.MessageChannel#getHistoryAround(String, int) MessageChannel.getHistoryAround(...)}
-     *
-     * <p><b>Example</b>
-     * <br>{@code MessageHistory history = MessageHistory.getHistoryAround(channel, messageId).limit(60).complete()}
-     * <br>Will return a MessageHistory instance with the first 60 messages sent around the provided message ID.
-     *
-     * <p>Alternatively you can provide an epoch millisecond timestamp using {@link TimeUtil#getDiscordTimestamp(long) MiscUtil.getDiscordTimestamp(long)}:
-     * <br><pre><code>
-     * long timestamp = System.currentTimeMillis(); // or any other epoch millis timestamp
-     * String discordTimestamp = Long.toUnsignedString(MiscUtil.getDiscordTimestamp(timestamp));
-     * MessageHistory history = MessageHistory.getHistoryAround(channel, discordTimestamp).complete();
-     * </code></pre>
-     *
-     * @param  channel
-     *         The {@link net.dv8tion.jda.api.entities.MessageChannel MessageChannel}
-     * @param  messageId
-     *         The pivot ID to use
-     *
-     * @throws java.lang.IllegalArgumentException
-     *         If any of the provided arguments is {@code null};
-     *         Or if the provided messageId contains whitespace
-     * @throws net.dv8tion.jda.api.exceptions.InsufficientPermissionException
-     *         If this is a TextChannel and the currently logged in account does not
-     *         have the permission {@link net.dv8tion.jda.api.Permission#MESSAGE_HISTORY Permission.MESSAGE_HISTORY}
-     *
-     * @return {@link net.dv8tion.jda.api.entities.MessageHistory.MessageRetrieveAction MessageRetrieveAction}
-     *
-     * @see    net.dv8tion.jda.api.entities.MessageChannel#getHistoryAround(String, int)  MessageChannel.getHistoryAround(String, int)
-     * @see    net.dv8tion.jda.api.entities.MessageChannel#getHistoryAround(long, int)    MessageChannel.getHistoryAround(long, int)
-     * @see    net.dv8tion.jda.api.entities.MessageChannel#getHistoryAround(Message, int) MessageChannel.getHistoryAround(Message, int)
-     */
-    public static MessageRetrieveAction getHistoryAround(MessageChannel channel, String messageId)
-    {
-        checkArguments(channel, messageId);
-        Route.CompiledRoute route = Route.Messages.GET_MESSAGE_HISTORY.compile(channel.getId()).withQueryParams("around", messageId);
-        return new MessageRetrieveAction(route, channel);
-    }
-
-    private static void checkArguments(MessageChannel channel, String messageId)
-    {
-        Checks.isSnowflake(messageId, "Message ID");
-        Checks.notNull(channel, "Channel");
-        if (channel.getType() == ChannelType.TEXT)
-        {
-            TextChannel t = (TextChannel) channel;
-            if (!t.getGuild().getSelfMember().hasPermission(t, Permission.MESSAGE_HISTORY))
-                throw new InsufficientPermissionException(Permission.MESSAGE_HISTORY);
-        }
-    }
+    Message getMessageById(long id);
 
     /**
      * Constructs a MessageHistory object with initially retrieved Messages before or after a certain pivot message id.
      * <br>Allows to {@link #limit(Integer) limit} the amount to retrieve for better performance!
      */
-    public static class MessageRetrieveAction extends RestActionImpl<MessageHistory>
-    {
-        private final MessageChannel channel;
-        private Integer limit;
-
-        protected MessageRetrieveAction(Route.CompiledRoute route, MessageChannel channel)
-        {
-            super(channel.getJDA(), route);
-            this.channel = channel;
-        }
+    interface MessageRetrieveAction extends RestAction<MessageHistory> {
 
         /**
          * Limit between 1-100 messages that should be retrieved.
@@ -485,43 +223,6 @@ public class MessageHistory
          *
          * @return The current MessageRetrieveAction for chaining convenience
          */
-        public MessageRetrieveAction limit(Integer limit)
-        {
-            if (limit != null)
-            {
-                Checks.positive(limit, "Limit");
-                Checks.check(limit <= 100, "Limit may not exceed 100!");
-            }
-            this.limit = limit;
-            return this;
-        }
-
-        @Override
-        protected Route.CompiledRoute finalizeRoute()
-        {
-            final Route.CompiledRoute route = super.finalizeRoute();
-            return limit == null ? route : route.withQueryParams("limit", String.valueOf(limit));
-        }
-
-        @Override
-        protected void handleSuccess(Response response, Request<MessageHistory> request)
-        {
-            final MessageHistory result = new MessageHistory(channel);
-            final JSONArray array = response.getArray();
-            final EntityBuilder builder = api.get().getEntityBuilder();
-            for (int i = 0; i < array.length(); i++)
-            {
-                try
-                {
-                    JSONObject obj = array.getJSONObject(i);
-                    result.history.put(obj.getLong("id"), builder.createMessage(obj, channel, false));
-                }
-                catch (JSONException | NullPointerException e)
-                {
-                    LOG.warn("Encountered exception in MessagePagination", e);
-                }
-            }
-            request.onSuccess(result);
-        }
+        MessageRetrieveAction limit(Integer limit);
     }
 }
